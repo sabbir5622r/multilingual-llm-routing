@@ -9,24 +9,119 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def find_result(raw_dir, family, size, language, limit):
-    suffix = f"_limit{limit}" if limit else ""
-    matches = list(raw_dir.glob(f"{family}_{size}_*_{language}{suffix}.csv"))
+def safe_ratio(numerator, denominator):
+    numerator = np.asarray(
+        numerator,
+        dtype=float,
+    )
+
+    denominator = np.asarray(
+        denominator,
+        dtype=float,
+    )
+
+    if not np.isfinite(numerator).all():
+        return np.nan
+
+    if not np.isfinite(denominator).all():
+        return np.nan
+
+    denominator_total = denominator.sum()
+
+    if denominator_total == 0:
+        return np.nan
+
+    return (
+        numerator.sum()
+        / denominator_total
+    )
+
+
+def find_result(
+    raw_root,
+    dataset_key,
+    family,
+    model_size,
+    language_code,
+    limit,
+):
+    suffix = (
+        f"_limit{limit}"
+        if limit is not None
+        else ""
+    )
+
+    dataset_directory = (
+        raw_root / dataset_key
+    )
+
+    matches = list(
+        dataset_directory.glob(
+            f"{family}_{model_size}_*"
+            f"_{language_code}{suffix}.csv"
+        )
+    )
+
+    if limit is None:
+        matches = [
+            path
+            for path in matches
+            if "_limit" not in path.stem
+        ]
+
     if len(matches) != 1:
         raise FileNotFoundError(
-            f"Expected one {family}/{size}/{language} result, found {len(matches)} in {raw_dir}"
+            "Expected exactly one result file for "
+            f"{dataset_key}/{family}/{model_size}/"
+            f"{language_code}, but found "
+            f"{len(matches)}"
         )
+
     return matches[0]
 
 
-def merge_pair(small_path, large_path):
-    small = pd.read_csv(small_path)
-    large = pd.read_csv(large_path)
-    keep = ["example_id", "predicted_label", "is_correct", "confidence_margin", "latency_ms", "input_tokens"]
-    merged = small[keep + ["language_code", "language_name", "family"]].merge(
-        large[keep], on="example_id", suffixes=("_small", "_large"), validate="one_to_one"
+def merge_pair(
+    small_result_path,
+    large_result_path,
+):
+    small_results = pd.read_csv(
+        small_result_path
     )
-    return merged
+
+    large_results = pd.read_csv(
+        large_result_path
+    )
+
+    prediction_columns = [
+        "example_id",
+        "predicted_label",
+        "is_correct",
+        "confidence_margin",
+        "max_choice_probability",
+        "entropy",
+        "latency_ms",
+        "input_tokens",
+    ]
+
+    metadata_columns = [
+        "dataset",
+        "task",
+        "category",
+        "language_code",
+        "language_name",
+        "family",
+    ]
+
+    paired_results = small_results[
+        prediction_columns + metadata_columns
+    ].merge(
+        large_results[prediction_columns],
+        on="example_id",
+        suffixes=("_small", "_large"),
+        validate="one_to_one",
+    )
+
+    return paired_results
 
 
 def route_metrics(frame, use_large, policy, budget, repeat=None):

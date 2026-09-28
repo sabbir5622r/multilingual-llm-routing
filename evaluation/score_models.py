@@ -110,118 +110,307 @@ def label_token_ids(tokenizer, labels):
 
 
 @torch.inference_mode()
-def score_one(loaded, family, row, labels, max_input_tokens):
-    prompt = apply_chat(loaded.tokenizer, build_prompt(row), family)
-    encoded = loaded.tokenizer(
+@torch.inference_mode()
+def score_one(
+    loaded_model,
+    family,
+    row,
+    max_input_tokens,
+):
+    labels = list(row["choice_labels"])
+
+    prompt = build_prompt(row)
+
+    formatted_prompt = apply_chat_template(
+        loaded_model.tokenizer,
         prompt,
+        family,
+    )
+
+    encoded = loaded_model.tokenizer(
+        formatted_prompt,
         return_tensors="pt",
         truncation=True,
         max_length=max_input_tokens,
         add_special_tokens=False,
     )
-    encoded = {key: value.to(loaded.model.device) for key, value in encoded.items()}
-    token_ids = label_token_ids(loaded.tokenizer, labels)
+
+    encoded = {
+        key: value.to(loaded_model.model.device)
+        for key, value in encoded.items()
+    }
+
+    answer_token_ids = label_token_ids(
+        loaded_model.tokenizer,
+        labels,
+    )
 
     if torch.cuda.is_available():
         torch.cuda.synchronize()
-    started = time.perf_counter()
-    output = loaded.model(**encoded, use_cache=False)
+
+    start_time = time.perf_counter()
+
+    output = loaded_model.model(
+        **encoded,
+        use_cache=False,
+    )
+
     if torch.cuda.is_available():
         torch.cuda.synchronize()
-    latency_ms = (time.perf_counter() - started) * 1000
 
-    next_logits = output.logits[0, -1].float()
-    choice_logits = torch.tensor([next_logits[token_ids[label]].item() for label in labels])
-    probs = torch.softmax(choice_logits, dim=0).cpu().tolist()
-    ranking = sorted(range(len(probs)), key=lambda idx: probs[idx], reverse=True)
-    prediction = labels[ranking[0]]
-    margin = probs[ranking[0]] - probs[ranking[1]]
-    entropy = -sum(prob * math.log(max(prob, 1e-12)) for prob in probs)
+    latency_ms = (
+        time.perf_counter() - start_time
+    ) * 1000
+
+    next_token_logits = output.logits[0, -1].float()
+
+    choice_logits = torch.stack(
+        [
+            next_token_logits[answer_token_ids[label]]
+            for label in labels
+        ]
+    )
+
+    probabilities = torch.softmax(
+        choice_logits,
+        dim=0,
+    ).cpu().tolist()
+
+    ranking = sorted(
+        range(len(probabilities)),
+        key=lambda index: probabilities[index],
+        reverse=True,
+    )
+
+    predicted_label = labels[ranking[0]]
+
+    confidence_margin = (
+        probabilities[ranking[0]]
+        - probabilities[ranking[1]]
+    )
+
+    entropy = -sum(
+        probability
+        * math.log(max(probability, 1e-12))
+        for probability in probabilities
+    )
+
+    probability_dictionary = dict(
+        zip(labels, probabilities)
+    )
 
     return {
-        "predicted_label": prediction,
-        "prob_A": probs[0],
-        "prob_B": probs[1],
-        "prob_C": probs[2],
-        "prob_D": probs[3],
-        "confidence_margin": margin,
+        "predicted_label": predicted_label,
+        "choice_probabilities": json.dumps(
+            probability_dictionary
+        ),
+        "confidence_margin": confidence_margin,
+        "max_choice_probability": probabilities[
+            ranking[0]
+        ],
         "entropy": entropy,
-        "input_tokens": int(encoded["input_ids"].shape[1]),
+        "input_tokens": int(
+            encoded["input_ids"].shape[1]
+        ),
         "latency_ms": latency_ms,
     }
 
 
-def evaluate(model_name, family, size, language_code, config_path, limit=None, resume=True):
+def evaluate(
+    model_name,
+    family,
+    model_size,
+    dataset_key,
+    language_code,
+    config_path,
+    limit=None,
+    resume=True,
+):
     with open(config_path, encoding="utf-8") as file:
-        cfg = yaml.safe_load(file)
+        config = yaml.safe_load(file)
 
-    data_path = ROOT / cfg["paths"]["processed_data"] / f"{language_code}.jsonl"
+    data_path = (
+        ROOT
+        / config["paths"]["processed_data"]
+        / dataset_key
+        / f"{language_code}.jsonl"
+    )
+
     if not data_path.exists():
-        raise FileNotFoundError(f"Run data/download_data.py first: {data_path}")
-    data = pd.read_json(data_path, lines=True)
-    if limit:
+        raise FileNotFoundError(
+            f"Dataset file was not found: {data_path}\n"
+            "Run data/download_data.py first."
+        )
+
+    data = pd.read_json(
+        data_path,
+        lines=True,
+    )
+
+    if limit is not None:
         data = data.head(limit)
 
-    suffix = f"_limit{limit}" if limit else ""
-    safe_name = model_name.replace("/", "__")
-    output_dir = ROOT / cfg["paths"]["raw_results"]
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{family}_{size}_{safe_name}_{language_code}{suffix}.csv"
+    if data.empty:
+        raise ValueError(
+            f"No examples found in {data_path}"
+        )
 
-    previous = pd.read_csv(output_path) if resume and output_path.exists() else pd.DataFrame()
-    completed = set(previous["example_id"].astype(str)) if not previous.empty else set()
-    loaded = load_model(model_name)
-    metadata = hardware_info()
+    suffix = (
+        f"_limit{limit}"
+        if limit is not None
+        else ""
+    )
+
+    safe_model_name = model_name.replace("/", "__")
+
+    output_directory = (
+        ROOT
+        / config["paths"]["raw_results"]
+        / dataset_key
+    )
+
+    output_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    output_path = output_directory / (
+        f"{family}_{model_size}_"
+        f"{safe_model_name}_{language_code}"
+        f"{suffix}.csv"
+    )
+
+    if resume and output_path.exists():
+        previous_results = pd.read_csv(output_path)
+    else:
+        previous_results = pd.DataFrame()
+
+    if not previous_results.empty:
+        completed_ids = set(
+            previous_results["example_id"].astype(str)
+        )
+    else:
+        completed_ids = set()
+
+    loaded_model = load_model(model_name)
+    environment = hardware_info()
+
     new_rows = []
-    checkpoint_every = cfg["evaluation"]["checkpoint_every"]
+
+    checkpoint_every = config["evaluation"][
+        "checkpoint_every"
+    ]
 
     try:
-        pending = data[~data["example_id"].astype(str).isin(completed)]
-        if not pending.empty:
+        pending_data = data[
+            ~data["example_id"]
+            .astype(str)
+            .isin(completed_ids)
+        ]
+
+        if not pending_data.empty:
             score_one(
-                loaded,
+                loaded_model,
                 family,
-                pending.iloc[0],
-                cfg["generation"]["answer_labels"],
-                cfg["generation"]["max_input_tokens"],
+                pending_data.iloc[0],
+                config["generation"]["max_input_tokens"],
             )
-        for _, row in tqdm(data.iterrows(), total=len(data), desc=f"{family}-{size}-{language_code}"):
-            if str(row["example_id"]) in completed:
+
+        progress = tqdm(
+            data.iterrows(),
+            total=len(data),
+            desc=(
+                f"{dataset_key}-"
+                f"{family}-"
+                f"{model_size}-"
+                f"{language_code}"
+            ),
+        )
+
+        for _, row in progress:
+            example_id = str(row["example_id"])
+
+            if example_id in completed_ids:
                 continue
+
             scored = score_one(
-                loaded,
+                loaded_model,
                 family,
                 row,
-                cfg["generation"]["answer_labels"],
-                cfg["generation"]["max_input_tokens"],
+                config["generation"]["max_input_tokens"],
             )
-            gold = correct_label(row["correct_answer_num"])
-            record = {
+
+            result = {
+                "dataset": dataset_key,
+                "task": row["task"],
+                "category": row["category"],
                 "example_id": row["example_id"],
                 "language_code": language_code,
-                "language_name": cfg["dataset"]["languages"][language_code],
+                "language_name": config["languages"][
+                    language_code
+                ],
                 "family": family,
-                "model_size": size,
+                "model_size": model_size,
                 "model_name": model_name,
-                "model_revision": loaded.revision,
-                "dtype": loaded.dtype,
-                "true_label": gold,
-                "is_correct": scored["predicted_label"] == gold,
-                "seed": cfg["seed"],
+                "model_revision": loaded_model.revision,
+                "dtype": loaded_model.dtype,
+                "true_label": row["correct_label"],
+                "is_correct": (
+                    scored["predicted_label"]
+                    == row["correct_label"]
+                ),
+                "num_choices": len(
+                    row["choice_labels"]
+                ),
+                "seed": config["seed"],
                 **scored,
-                **metadata,
+                **environment,
             }
-            new_rows.append(record)
-            if len(new_rows) % checkpoint_every == 0:
-                combined = pd.concat([previous, pd.DataFrame(new_rows)], ignore_index=True)
-                combined.to_csv(output_path, index=False)
 
-        combined = pd.concat([previous, pd.DataFrame(new_rows)], ignore_index=True)
-        combined = combined.drop_duplicates("example_id", keep="last")
-        combined.to_csv(output_path, index=False)
+            new_rows.append(result)
+
+            if (
+                len(new_rows) % checkpoint_every
+                == 0
+            ):
+                checkpoint = pd.concat(
+                    [
+                        previous_results,
+                        pd.DataFrame(new_rows),
+                    ],
+                    ignore_index=True,
+                )
+
+                checkpoint.to_csv(
+                    output_path,
+                    index=False,
+                )
+
+        combined_results = pd.concat(
+            [
+                previous_results,
+                pd.DataFrame(new_rows),
+            ],
+            ignore_index=True,
+        )
+
+        combined_results = (
+            combined_results
+            .drop_duplicates(
+                "example_id",
+                keep="last",
+            )
+        )
+
+        combined_results.to_csv(
+            output_path,
+            index=False,
+        )
+
         return output_path
+
     finally:
-        clear_model(loaded)
+        clear_model(loaded_model)
 
 
 def main():
@@ -242,6 +431,92 @@ def main():
         args.config, limit=args.limit, resume=not args.no_resume,
     )
     print(f"Saved {path}")
+
+
+if __name__ == "__main__":
+    main()
+def main():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--family",
+        required=True,
+        choices=[
+            "qwen",
+            "gemma",
+            "llama",
+        ],
+    )
+
+    parser.add_argument(
+        "--size",
+        required=True,
+        choices=[
+            "small",
+            "large",
+        ],
+    )
+
+    parser.add_argument(
+        "--dataset",
+        required=True,
+        choices=[
+            "belebele",
+            "mmlu_prox_lite",
+            "sib200",
+        ],
+    )
+
+    parser.add_argument(
+        "--language",
+        required=True,
+    )
+
+    parser.add_argument(
+        "--config",
+        default=str(ROOT / "config.yaml"),
+    )
+
+    parser.add_argument(
+        "--limit",
+        type=int,
+    )
+
+    parser.add_argument(
+        "--no-resume",
+        action="store_true",
+    )
+
+    args = parser.parse_args()
+
+    with open(
+        args.config,
+        encoding="utf-8",
+    ) as file:
+        config = yaml.safe_load(file)
+
+    if args.language not in config["languages"]:
+        raise ValueError(
+            f"Unknown language code: {args.language}"
+        )
+
+    model_name = config["models"][
+        args.family
+    ][args.size]
+
+    output_path = evaluate(
+        model_name=model_name,
+        family=args.family,
+        model_size=args.size,
+        dataset_key=args.dataset,
+        language_code=args.language,
+        config_path=args.config,
+        limit=args.limit,
+        resume=not args.no_resume,
+    )
+
+    print()
+    print(f"Saved results to: {output_path}")
 
 
 if __name__ == "__main__":

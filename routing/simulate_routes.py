@@ -123,53 +123,169 @@ def merge_pair(
 
     return paired_results
 
-
-def route_metrics(frame, use_large, policy, budget, repeat=None):
-    use_large = np.asarray(use_large, dtype=bool)
-    correct = np.where(use_large, frame["is_correct_large"], frame["is_correct_small"]).astype(float)
-    latency = frame["latency_ms_small"].to_numpy(float) + np.where(
-        use_large, frame["latency_ms_large"].to_numpy(float), 0.0
+def route_metrics(
+    frame,
+    use_large,
+    policy,
+    budget,
+    repeat=None,
+):
+    use_large = np.asarray(
+        use_large,
+        dtype=bool,
     )
-    large_only_latency = frame["latency_ms_large"].sum()
+
+    routed_correctness = np.where(
+        use_large,
+        frame["is_correct_large"],
+        frame["is_correct_small"],
+    ).astype(float)
+
+    routed_latency = (
+        frame["latency_ms_small"].to_numpy(float)
+        + np.where(
+            use_large,
+            frame["latency_ms_large"].to_numpy(float),
+            0.0,
+        )
+    )
+
     return {
+        "dataset": frame["dataset"].iloc[0],
         "family": frame["family"].iloc[0],
-        "language_code": frame["language_code"].iloc[0],
-        "language_name": frame["language_name"].iloc[0],
+        "language_code": frame[
+            "language_code"
+        ].iloc[0],
+        "language_name": frame[
+            "language_name"
+        ].iloc[0],
         "policy": policy,
         "budget": budget,
         "repeat": repeat,
         "examples": len(frame),
         "escalation_rate": use_large.mean(),
-        "accuracy": correct.mean(),
-        "total_latency_ms": latency.sum(),
-        "latency_ratio_vs_large": latency.sum() / large_only_latency,
+        "accuracy": routed_correctness.mean(),
+        "total_latency_ms": routed_latency.sum(),
+        "latency_ratio_vs_large": safe_ratio(
+            routed_latency,
+            frame["latency_ms_large"],
+        ),
     }
 
 
-def simulate_language(frame, budgets, repeats, seed):
-    results = []
-    n = len(frame)
-    for budget_index, budget in enumerate(budgets):
-        count = int(round(n * budget))
-        confidence_order = np.argsort(frame["confidence_margin_small"].to_numpy())
-        confidence_mask = np.zeros(n, dtype=bool)
-        confidence_mask[confidence_order[:count]] = True
-        results.append(route_metrics(frame, confidence_mask, "confidence", budget))
+def simulate_language(
+    frame,
+    budgets,
+    random_repeats,
+    seed,
+):
+    routing_rows = []
+    number_of_examples = len(frame)
 
-        oracle_gain = frame["is_correct_large"].astype(int) - frame["is_correct_small"].astype(int)
-        oracle_order = np.argsort(-oracle_gain.to_numpy(), kind="stable")
-        oracle_mask = np.zeros(n, dtype=bool)
-        oracle_mask[oracle_order[:count]] = True
-        results.append(route_metrics(frame, oracle_mask, "oracle_upper_bound", budget))
+    small_confidence = frame[
+        "confidence_margin_small"
+    ].to_numpy()
 
-        for repeat in range(repeats):
-            rng = np.random.default_rng(np.random.SeedSequence([seed, budget_index, repeat]))
-            random_mask = np.zeros(n, dtype=bool)
-            if count:
-                random_mask[rng.choice(n, size=count, replace=False)] = True
-            results.append(route_metrics(frame, random_mask, "random", budget, repeat))
+    oracle_gain = (
+        frame["is_correct_large"].astype(int)
+        - frame["is_correct_small"].astype(int)
+    )
 
-    return pd.DataFrame(results)
+    for budget_index, budget in enumerate(
+        budgets
+    ):
+        escalation_count = int(
+            round(number_of_examples * budget)
+        )
+
+        confidence_mask = np.zeros(
+            number_of_examples,
+            dtype=bool,
+        )
+
+        confidence_order = np.argsort(
+            small_confidence,
+            kind="stable",
+        )
+
+        confidence_mask[
+            confidence_order[:escalation_count]
+        ] = True
+
+        routing_rows.append(
+            route_metrics(
+                frame,
+                confidence_mask,
+                "local_confidence",
+                budget,
+            )
+        )
+
+        oracle_mask = np.zeros(
+            number_of_examples,
+            dtype=bool,
+        )
+
+        oracle_order = np.argsort(
+            -oracle_gain.to_numpy(),
+            kind="stable",
+        )
+
+        oracle_mask[
+            oracle_order[:escalation_count]
+        ] = True
+
+        routing_rows.append(
+            route_metrics(
+                frame,
+                oracle_mask,
+                "local_oracle_upper_bound",
+                budget,
+            )
+        )
+
+        for repeat in range(random_repeats):
+            random_generator = (
+                np.random.default_rng(
+                    np.random.SeedSequence(
+                        [
+                            seed,
+                            budget_index,
+                            repeat,
+                        ]
+                    )
+                )
+            )
+
+            random_mask = np.zeros(
+                number_of_examples,
+                dtype=bool,
+            )
+
+            if escalation_count > 0:
+                selected_indices = (
+                    random_generator.choice(
+                        number_of_examples,
+                        size=escalation_count,
+                        replace=False,
+                    )
+                )
+
+                random_mask[
+                    selected_indices
+                ] = True
+
+            routing_rows.append(
+                route_metrics(
+                    frame,
+                    random_mask,
+                    "local_random",
+                    budget,
+                    repeat,
+                )
+            )
+
+    return pd.DataFrame(routing_rows)
 
 
 def main():

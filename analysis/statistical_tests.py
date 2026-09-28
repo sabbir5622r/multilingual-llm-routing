@@ -1,4 +1,5 @@
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -8,144 +9,295 @@ from scipy.stats import binomtest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from routing.simulate_routes import find_result, merge_pair
 
 
-def find_result(raw_dir, family, size, language, limit):
-    suffix = f"_limit{limit}" if limit else ""
-    matches = list(raw_dir.glob(f"{family}_{size}_*_{language}{suffix}.csv"))
-    if len(matches) != 1:
-        raise FileNotFoundError(f"Expected one result for {family}/{size}/{language}, found {len(matches)}")
-    return matches[0]
+def route(frame, budget):
+    count = int(round(len(frame) * budget))
+    mask = np.zeros(len(frame), dtype=bool)
+
+    order = np.argsort(
+        frame["confidence_margin_small"].to_numpy(),
+        kind="stable",
+    )
+    mask[order[:count]] = True
+
+    return np.where(
+        mask,
+        frame["is_correct_large"],
+        frame["is_correct_small"],
+    ).astype(float)
 
 
-def load_pair(raw_dir, family, language, limit):
-    small = pd.read_csv(find_result(raw_dir, family, "small", language, limit))
-    large = pd.read_csv(find_result(raw_dir, family, "large", language, limit))
-    columns = ["example_id", "is_correct", "confidence_margin"]
-    return small[columns].merge(
-        large[["example_id", "is_correct"]],
-        on="example_id",
-        suffixes=("_small", "_large"),
-        validate="one_to_one",
+def random_mean(frame, budget, repeats, seed, budget_index):
+    count = int(round(len(frame) * budget))
+    outcomes = np.empty(
+        (repeats, len(frame)),
+        dtype=float,
     )
 
-
-def confidence_decisions(frame, budget):
-    count = int(round(len(frame) * budget))
-    order = np.argsort(frame["confidence_margin"].to_numpy())
-    escalate = np.zeros(len(frame), dtype=bool)
-    escalate[order[:count]] = True
-    routed = np.where(escalate, frame["is_correct_large"], frame["is_correct_small"]).astype(bool)
-    return routed
-
-
-def mean_random_correctness(frame, budget, repeats, seed, budget_index):
-    count = int(round(len(frame) * budget))
-    outcomes = np.empty((repeats, len(frame)), dtype=float)
     for repeat in range(repeats):
-        rng = np.random.default_rng(np.random.SeedSequence([seed, budget_index, repeat]))
-        escalate = np.zeros(len(frame), dtype=bool)
+        random_generator = np.random.default_rng(
+            np.random.SeedSequence(
+                [seed, budget_index, repeat]
+            )
+        )
+
+        mask = np.zeros(len(frame), dtype=bool)
+
         if count:
-            escalate[rng.choice(len(frame), size=count, replace=False)] = True
+            selected = random_generator.choice(
+                len(frame),
+                size=count,
+                replace=False,
+            )
+            mask[selected] = True
+
         outcomes[repeat] = np.where(
-            escalate, frame["is_correct_large"], frame["is_correct_small"]
-        ).astype(float)
+            mask,
+            frame["is_correct_large"],
+            frame["is_correct_small"],
+        )
+
     return outcomes.mean(axis=0)
 
 
-def paired_bootstrap(a, b, repeats, seed):
-    rng = np.random.default_rng(seed)
+def paired_bootstrap(first, second, repeats, seed):
+    random_generator = np.random.default_rng(seed)
+
+    first = np.asarray(first, dtype=float)
+    second = np.asarray(second, dtype=float)
+
     differences = np.empty(repeats)
-    n = len(a)
-    a = np.asarray(a, dtype=float)
-    b = np.asarray(b, dtype=float)
-    for idx in range(repeats):
-        sample = rng.integers(0, n, size=n)
-        differences[idx] = (a[sample] - b[sample]).mean()
-    return float((a - b).mean()), *np.quantile(differences, [0.025, 0.975]).tolist()
+
+    for index in range(repeats):
+        sample = random_generator.integers(
+            0,
+            len(first),
+            size=len(first),
+        )
+
+        differences[index] = (
+            first[sample] - second[sample]
+        ).mean()
+
+    return (
+        (first - second).mean(),
+        *np.quantile(
+            differences,
+            [0.025, 0.975],
+        ),
+    )
 
 
-def mcnemar_exact(a, b):
-    a = np.asarray(a, dtype=bool)
-    b = np.asarray(b, dtype=bool)
-    a_only = int(np.sum(a & ~b))
-    b_only = int(np.sum(~a & b))
-    discordant = a_only + b_only
-    p_value = 1.0 if discordant == 0 else binomtest(min(a_only, b_only), discordant, 0.5).pvalue
-    return a_only, b_only, p_value
+def mcnemar(first, second):
+    first = np.asarray(first, dtype=bool)
+    second = np.asarray(second, dtype=bool)
+
+    first_only = int(
+        np.sum(first & ~second)
+    )
+    second_only = int(
+        np.sum(~first & second)
+    )
+
+    discordant = first_only + second_only
+
+    if discordant == 0:
+        p_value = 1.0
+    else:
+        p_value = binomtest(
+            min(first_only, second_only),
+            discordant,
+            0.5,
+        ).pvalue
+
+    return first_only, second_only, p_value
 
 
-def holm_adjust(values):
+def holm(values):
     values = np.asarray(values, dtype=float)
     order = np.argsort(values)
+
     adjusted = np.empty_like(values)
     running = 0.0
-    count = len(values)
+
     for rank, index in enumerate(order):
-        candidate = min(1.0, (count - rank) * values[index])
-        running = max(running, candidate)
+        running = max(
+            running,
+            min(
+                1.0,
+                (len(values) - rank) * values[index],
+            ),
+        )
         adjusted[index] = running
+
     return adjusted
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default=str(ROOT / "config.yaml"))
-    parser.add_argument("--families", nargs="+", default=["qwen", "gemma"])
+
+    parser.add_argument(
+        "--config",
+        default=str(ROOT / "config.yaml"),
+    )
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        default=["belebele", "mmlu_prox_lite", "sib200"],
+    )
+    parser.add_argument(
+        "--families",
+        nargs="+",
+        default=["qwen", "gemma", "llama"],
+    )
     parser.add_argument("--limit", type=int)
-    parser.add_argument("--bootstrap-repeats", type=int, default=5000)
+    parser.add_argument(
+        "--bootstrap-repeats",
+        type=int,
+        default=5000,
+    )
+
     args = parser.parse_args()
 
     with open(args.config, encoding="utf-8") as file:
-        cfg = yaml.safe_load(file)
-    raw_dir = ROOT / cfg["paths"]["raw_results"]
-    output_dir = ROOT / cfg["paths"]["summary"]
-    output_dir.mkdir(parents=True, exist_ok=True)
-    rows = []
+        config = yaml.safe_load(file)
 
-    for family in args.families:
-        for language in cfg["dataset"]["languages"]:
-            frame = load_pair(raw_dir, family, language, args.limit)
-            large = frame["is_correct_large"].astype(bool).to_numpy()
-            for budget in [0.2, 0.5, 0.8]:
-                routed = confidence_decisions(frame, budget)
-                versus_large, large_ci_low, large_ci_high = paired_bootstrap(
-                    routed, large, args.bootstrap_repeats, cfg["seed"]
+    raw_root = ROOT / config["paths"]["raw_results"]
+    rows = []
+    tested_budgets = [0.2, 0.5, 0.8]
+
+    for dataset_key in args.datasets:
+        for family in args.families:
+            for language_code in config["languages"]:
+                small_path = find_result(
+                    raw_root,
+                    dataset_key,
+                    family,
+                    "small",
+                    language_code,
+                    args.limit,
                 )
-                budget_index = cfg["routing"]["budgets"].index(budget)
-                random_mean = mean_random_correctness(
-                    frame, budget, cfg["routing"]["random_repeats"], cfg["seed"], budget_index
+                large_path = find_result(
+                    raw_root,
+                    dataset_key,
+                    family,
+                    "large",
+                    language_code,
+                    args.limit,
                 )
-                versus_random, random_ci_low, random_ci_high = paired_bootstrap(
-                    routed, random_mean, args.bootstrap_repeats, cfg["seed"]
+
+                pair = merge_pair(
+                    small_path,
+                    large_path,
                 )
-                routed_only, large_only, p_value = mcnemar_exact(routed, large)
-                rows.append({
-                    "family": family,
-                    "language_code": language,
-                    "budget": budget,
-                    "routed_accuracy": routed.mean(),
-                    "large_accuracy": large.mean(),
-                    "confidence_minus_large": versus_large,
-                    "versus_large_ci_low": large_ci_low,
-                    "versus_large_ci_high": large_ci_high,
-                    "random_mean_accuracy": random_mean.mean(),
-                    "confidence_minus_random_mean": versus_random,
-                    "versus_random_ci_low": random_ci_low,
-                    "versus_random_ci_high": random_ci_high,
-                    "routed_correct_large_wrong": routed_only,
-                    "routed_wrong_large_correct": large_only,
-                    "mcnemar_p": p_value,
-                })
+
+                large_correct = pair[
+                    "is_correct_large"
+                ].to_numpy(float)
+
+                for budget in tested_budgets:
+                    routed = route(pair, budget)
+
+                    random_correct = random_mean(
+                        pair,
+                        budget,
+                        config["routing"]["random_repeats"],
+                        config["seed"],
+                        config["routing"]["budgets"].index(
+                            budget
+                        ),
+                    )
+
+                    vs_random = paired_bootstrap(
+                        routed,
+                        random_correct,
+                        args.bootstrap_repeats,
+                        config["seed"],
+                    )
+
+                    vs_large = paired_bootstrap(
+                        routed,
+                        large_correct,
+                        args.bootstrap_repeats,
+                        config["seed"],
+                    )
+
+                    routed_only, large_only, p_value = (
+                        mcnemar(
+                            routed,
+                            large_correct,
+                        )
+                    )
+
+                    rows.append(
+                        {
+                            "dataset": dataset_key,
+                            "family": family,
+                            "language_code": language_code,
+                            "budget": budget,
+                            "routed_accuracy": routed.mean(),
+                            "random_mean_accuracy": (
+                                random_correct.mean()
+                            ),
+                            "large_accuracy": (
+                                large_correct.mean()
+                            ),
+                            "confidence_minus_random": (
+                                vs_random[0]
+                            ),
+                            "random_ci_low": vs_random[1],
+                            "random_ci_high": vs_random[2],
+                            "confidence_minus_large": (
+                                vs_large[0]
+                            ),
+                            "large_ci_low": vs_large[1],
+                            "large_ci_high": vs_large[2],
+                            "routed_only_correct": routed_only,
+                            "large_only_correct": large_only,
+                            "mcnemar_p": p_value,
+                        }
+                    )
 
     results = pd.DataFrame(rows)
     results["mcnemar_p_holm"] = np.nan
-    for (_, _), indices in results.groupby(["family", "language_code"]).groups.items():
-        results.loc[indices, "mcnemar_p_holm"] = holm_adjust(results.loc[indices, "mcnemar_p"])
-    suffix = f"_limit{args.limit}" if args.limit else ""
-    output = output_dir / f"statistical_tests{suffix}.csv"
-    results.to_csv(output, index=False)
-    print(f"Saved {output}")
+
+    for _, indices in results.groupby(
+        ["dataset", "family", "language_code"]
+    ).groups.items():
+        results.loc[
+            indices,
+            "mcnemar_p_holm",
+        ] = holm(
+            results.loc[indices, "mcnemar_p"]
+        )
+
+    suffix = (
+        f"_limit{args.limit}"
+        if args.limit is not None
+        else ""
+    )
+
+    output_path = (
+        ROOT
+        / config["paths"]["summary"]
+        / f"statistical_tests{suffix}.csv"
+    )
+
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    results.to_csv(
+        output_path,
+        index=False,
+    )
+
+    print(f"Saved {output_path}")
 
 
 if __name__ == "__main__":

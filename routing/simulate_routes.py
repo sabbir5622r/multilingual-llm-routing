@@ -290,35 +290,94 @@ def simulate_language(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default=str(ROOT / "config.yaml"))
-    parser.add_argument("--families", nargs="+", default=["qwen", "gemma"])
-    parser.add_argument("--limit", type=int)
+
+    parser.add_argument(
+        "--config",
+        default=str(ROOT / "config.yaml"),
+    )
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        default=["belebele", "mmlu_prox_lite", "sib200"],
+    )
+    parser.add_argument(
+        "--families",
+        nargs="+",
+        default=["qwen", "gemma", "llama"],
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+    )
+
     args = parser.parse_args()
 
     with open(args.config, encoding="utf-8") as file:
-        cfg = yaml.safe_load(file)
-    raw_dir = ROOT / cfg["paths"]["raw_results"]
-    output_dir = ROOT / cfg["paths"]["routing_results"]
-    output_dir.mkdir(parents=True, exist_ok=True)
-    all_results = []
+        config = yaml.safe_load(file)
 
-    for family in args.families:
-        for language in cfg["dataset"]["languages"]:
-            small = find_result(raw_dir, family, "small", language, args.limit)
-            large = find_result(raw_dir, family, "large", language, args.limit)
-            frame = merge_pair(small, large)
-            all_results.append(simulate_language(
-                frame,
-                cfg["routing"]["budgets"],
-                cfg["routing"]["random_repeats"],
-                cfg["seed"],
-            ))
+    raw_root = ROOT / config["paths"]["raw_results"]
 
-    results = pd.concat(all_results, ignore_index=True)
-    suffix = f"_limit{args.limit}" if args.limit else ""
-    output_path = output_dir / f"routing_results{suffix}.csv"
-    results.to_csv(output_path, index=False)
-    print(f"Saved {output_path}")
+    for dataset_key in args.datasets:
+        all_results = []
+
+        for family in args.families:
+            for language_code in config["languages"]:
+                small_path = find_result(
+                    raw_root,
+                    dataset_key,
+                    family,
+                    "small",
+                    language_code,
+                    args.limit,
+                )
+                large_path = find_result(
+                    raw_root,
+                    dataset_key,
+                    family,
+                    "large",
+                    language_code,
+                    args.limit,
+                )
+
+                paired = merge_pair(
+                    small_path,
+                    large_path,
+                )
+
+                all_results.append(
+                    simulate_language(
+                        paired,
+                        config["routing"]["budgets"],
+                        config["routing"]["random_repeats"],
+                        config["seed"],
+                    )
+                )
+
+        results = pd.concat(
+            all_results,
+            ignore_index=True,
+        )
+
+        suffix = (
+            f"_limit{args.limit}"
+            if args.limit is not None
+            else ""
+        )
+
+        output_dir = (
+            ROOT
+            / config["paths"]["routing_results"]
+            / dataset_key
+        )
+        output_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output_path = output_dir / f"local_routes{suffix}.csv"
+        results.to_csv(output_path, index=False)
+
+        print(f"Saved {output_path}")
 
 
 if __name__ == "__main__":

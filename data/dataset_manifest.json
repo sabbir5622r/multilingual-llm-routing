@@ -1,0 +1,15 @@
+{
+  "dataset": "facebook/belebele",
+  "revision": "main",
+  "license": "CC-BY-SA-4.0",
+  "citation": "Bandarkar et al. (2024), The Belebele Benchmark: a Parallel Reading Comprehension Dataset in 122 Language Variants",
+  "subsets": {
+    "eng_Latn": "English",
+    "ben_Beng": "Bangla",
+    "hin_Deva": "Hindi",
+    "urd_Arab": "Urdu"
+  },
+  "expected_rows_per_subset": 900,
+  "usage": "Evaluation only. Test labels are never used to fit confidence thresholds."
+}
+

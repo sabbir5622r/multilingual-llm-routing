@@ -1,33 +1,94 @@
 seed: 42
-dataset:
-  name: facebook/belebele
-  revision: main
-  languages:
-    eng_Latn: English
-    ben_Beng: Bangla
-    hin_Deva: Hindi
-    urd_Arab: Urdu
+
+languages:
+  eng_Latn: English
+  ben_Beng: Bangla
+  hin_Deva: Hindi
+  urd_Arab: Urdu
+
+datasets:
+  belebele:
+    name: facebook/belebele
+    revision: main
+    subsets:
+      eng_Latn: eng_Latn
+      ben_Beng: ben_Beng
+      hin_Deva: hin_Deva
+      urd_Arab: urd_Arab
+    splits:
+      - test
+    expected_rows: 900
+
+  mmlu_prox_lite:
+    name: li-lab/MMLU-ProX-Lite
+    revision: main
+    subsets:
+      eng_Latn: en
+      ben_Beng: bn
+      hin_Deva: hi
+      urd_Arab: ur
+    splits:
+      - validation
+      - test
+    expected_rows: 658
+
+  sib200:
+    name: Davlan/sib200
+    revision: main
+    subsets:
+      eng_Latn: eng_Latn
+      ben_Beng: ben_Beng
+      hin_Deva: hin_Deva
+      urd_Arab: urd_Arab
+    splits:
+      - test
+    expected_rows: 204
+
 models:
   qwen:
     small: Qwen/Qwen3-1.7B
     large: Qwen/Qwen3-4B
     thinking: false
+
   gemma:
     small: google/gemma-3-1b-it
     large: google/gemma-3-4b-it
+
+  llama:
+    small: meta-llama/Llama-3.2-1B-Instruct
+    large: meta-llama/Llama-3.2-3B-Instruct
+
 generation:
   max_input_tokens: 4096
-  answer_labels: [A, B, C, D]
+  max_choices: 10
+
 routing:
-  budgets: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  budgets:
+    - 0.0
+    - 0.1
+    - 0.2
+    - 0.3
+    - 0.4
+    - 0.5
+    - 0.6
+    - 0.7
+    - 0.8
+    - 0.9
+    - 1.0
   random_repeats: 100
+  minimum_quota_fraction: 0.75
+
 evaluation:
   checkpoint_every: 25
   batch_size: 1
+
+efficiency:
+  warmup_examples: 5
+  measured_examples: 100
+
 paths:
-  processed_data: data/processed
+  processed_data: data/processed_phase2
   raw_results: results/raw
   routing_results: results/routing
   summary: results/summary
   figures: results/figures
-

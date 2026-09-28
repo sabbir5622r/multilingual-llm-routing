@@ -1,6 +1,7 @@
 import argparse
 import json
 import math
+import sys
 import time
 from pathlib import Path
 
@@ -11,55 +12,101 @@ from tqdm.auto import tqdm
 
 
 ROOT = Path(__file__).resolve().parents[1]
-import sys
 sys.path.insert(0, str(ROOT))
 
 from models.model_utils import clear_model, hardware_info, load_model
 
 
 def build_prompt(row):
-    return (
-        "Read the passage and answer the multiple-choice question. "
-        "Reply with only A, B, C, or D.\n\n"
-        f"Passage:\n{row['flores_passage']}\n\n"
-        f"Question:\n{row['question']}\n\n"
-        f"A. {row['mc_answer1']}\n"
-        f"B. {row['mc_answer2']}\n"
-        f"C. {row['mc_answer3']}\n"
-        f"D. {row['mc_answer4']}\n\n"
-        "Answer:"
+    options = "\n".join(
+        f"{label}. {choice}"
+        for label, choice in zip(
+            row["choice_labels"],
+            row["choices"],
+        )
+    )
+
+    allowed_labels = ", ".join(row["choice_labels"])
+
+    if row["task"] == "reading_comprehension":
+        return (
+            "Read the passage and answer the multiple-choice question. "
+            f"Reply with only one of: {allowed_labels}.\n\n"
+            f"Passage:\n{row['context']}\n\n"
+            f"Question:\n{row['question']}\n\n"
+            f"{options}\n\n"
+            "Answer:"
+        )
+
+    if row["task"] == "multitask_reasoning":
+        return (
+            "Answer the multiple-choice question. "
+            f"Reply with only one of: {allowed_labels}.\n\n"
+            f"Question:\n{row['question']}\n\n"
+            f"{options}\n\n"
+            "Answer:"
+        )
+
+    if row["task"] == "topic_classification":
+        return (
+            "Classify the text into one topic. "
+            f"Reply with only one of: {allowed_labels}.\n\n"
+            f"Text:\n{row['question']}\n\n"
+            f"Topics:\n{options}\n\n"
+            "Answer:"
+        )
+
+    raise ValueError(
+        f"Unknown task type: {row['task']}"
     )
 
 
-def apply_chat(tokenizer, prompt, family):
-    kwargs = {"tokenize": False, "add_generation_prompt": True}
+def apply_chat_template(tokenizer, prompt, family):
+    template_options = {
+        "tokenize": False,
+        "add_generation_prompt": True,
+    }
+
     if family == "qwen":
-        kwargs["enable_thinking"] = False
-    return tokenizer.apply_chat_template([{"role": "user", "content": prompt}], **kwargs)
+        template_options["enable_thinking"] = False
+
+    messages = [
+        {
+            "role": "user",
+            "content": prompt,
+        }
+    ]
+
+    return tokenizer.apply_chat_template(
+        messages,
+        **template_options,
+    )
 
 
 def label_token_ids(tokenizer, labels):
-    ids = {}
+    token_ids = {}
+
     for label in labels:
-        pieces = tokenizer.encode(label, add_special_tokens=False)
+        pieces = tokenizer.encode(
+            label,
+            add_special_tokens=False,
+        )
+
         if len(pieces) != 1:
-            spaced = tokenizer.encode(" " + label, add_special_tokens=False)
-            if len(spaced) != 1:
-                raise ValueError(f"Label {label!r} is not a single token for {tokenizer.name_or_path}")
-            pieces = spaced
-        ids[label] = pieces[0]
-    return ids
+            pieces = tokenizer.encode(
+                " " + label,
+                add_special_tokens=False,
+            )
 
+        if len(pieces) != 1:
+            raise ValueError(
+                f"Answer label {label!r} is not represented "
+                f"by one token for {tokenizer.name_or_path}"
+            )
 
-def correct_label(value):
-    text = str(value).strip()
-    if text.endswith(".0") and text[:-2].isdigit():
-        text = text[:-2]
-    if text in {"1", "2", "3", "4"}:
-        return "ABCD"[int(text) - 1]
-    if text in {"A", "B", "C", "D"}:
-        return text
-    raise ValueError(f"Unknown gold answer: {value!r}")
+        token_ids[label] = pieces[0]
+
+    return token_ids
 
 
 @torch.inference_mode()

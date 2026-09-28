@@ -18,10 +18,14 @@ class LoadedModel:
 
 
 def choose_dtype():
-    if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
-        return torch.bfloat16
     if torch.cuda.is_available():
+        major_version, _ = torch.cuda.get_device_capability(0)
+
+        if major_version >= 8 and torch.cuda.is_bf16_supported():
+            return torch.bfloat16
+
         return torch.float16
+
     return torch.float32
 
 

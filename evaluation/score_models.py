@@ -109,7 +109,7 @@ def label_token_ids(tokenizer, labels):
     return token_ids
 
 
-@torch.inference_mode()
+
 @torch.inference_mode()
 def score_one(
     loaded_model,
@@ -413,28 +413,7 @@ def evaluate(
         clear_model(loaded_model)
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--family", required=True, choices=["qwen", "gemma"])
-    parser.add_argument("--size", required=True, choices=["small", "large"])
-    parser.add_argument("--language", required=True)
-    parser.add_argument("--config", default=str(ROOT / "config.yaml"))
-    parser.add_argument("--limit", type=int)
-    parser.add_argument("--no-resume", action="store_true")
-    args = parser.parse_args()
 
-    with open(args.config, encoding="utf-8") as file:
-        cfg = yaml.safe_load(file)
-    model_name = cfg["models"][args.family][args.size]
-    path = evaluate(
-        model_name, args.family, args.size, args.language,
-        args.config, limit=args.limit, resume=not args.no_resume,
-    )
-    print(f"Saved {path}")
-
-
-if __name__ == "__main__":
-    main()
 def main():
     parser = argparse.ArgumentParser()
 

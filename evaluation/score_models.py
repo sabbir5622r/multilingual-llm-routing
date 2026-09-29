@@ -153,6 +153,11 @@ def score_one(
     output = loaded_model.model(
         **encoded,
         use_cache=False,
+        **(
+            {"logits_to_keep": 1}
+            if loaded_model.model_name == "google/gemma-3-4b-it"
+            else {}
+        ),
     )
 
     if torch.cuda.is_available():

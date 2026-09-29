@@ -36,20 +36,48 @@ def resolve_revision(model_name, token=None):
 def load_model(model_name):
     token = os.getenv("HF_TOKEN")
     revision = resolve_revision(model_name, token=token)
-    dtype = choose_dtype()
-    tokenizer = AutoTokenizer.from_pretrained(model_name, revision=revision, token=token)
-    model_class = AutoModelForImageTextToText if model_name == "google/gemma-3-4b-it" else AutoModelForCausalLM
+
+    dtype = (
+        torch.float32
+        if model_name == "google/gemma-3-4b-it"
+        else choose_dtype()
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name,
+        revision=revision,
+        token=token,
+    )
+
+    model_class = (
+        AutoModelForImageTextToText
+        if model_name == "google/gemma-3-4b-it"
+        else AutoModelForCausalLM
+    )
+
     model = model_class.from_pretrained(
         model_name,
         revision=revision,
         token=token,
         torch_dtype=dtype,
         device_map="auto",
+        max_memory=(
+            {0: "14GiB", 1: "14GiB", "cpu": "24GiB"}
+            if model_name == "google/gemma-3-4b-it"
+            else None
+        ),
         low_cpu_mem_usage=True,
     )
-    model.eval()
-    return LoadedModel(model, tokenizer, model_name, revision, str(dtype).replace("torch.", ""))
 
+    model.eval()
+
+    return LoadedModel(
+        model,
+        tokenizer,
+        model_name,
+        revision,
+        str(dtype).replace("torch.", ""),
+    )
 
 def hardware_info():
     return {

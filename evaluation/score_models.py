@@ -171,6 +171,13 @@ def score_one(
         ]
     )
 
+    if not torch.isfinite(choice_logits).all():
+        raise FloatingPointError(
+            f"Nonfinite answer logits for "
+            f"{loaded_model.model_name}. "
+            "Stop evaluation and check model precision."
+        )   
+
     probabilities = torch.softmax(
         choice_logits,
         dim=0,

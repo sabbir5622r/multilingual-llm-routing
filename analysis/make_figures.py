@@ -78,10 +78,14 @@ def save_figure(fig, output_dir, name):
 def set_style():
     plt.rcParams.update(
         {
-            "font.size": 9,
-            "axes.titlesize": 10,
-            "axes.labelsize": 9,
-            "legend.fontsize": 8,
+            "font.size": 18,
+            "axes.titlesize": 18,
+            "axes.labelsize": 20,
+            "xtick.labelsize": 18,
+            "ytick.labelsize": 18,
+            "legend.fontsize": 18,
+            "legend.title_fontsize": 18,
+            "figure.titlesize": 18,
             "figure.dpi": 120,
             "axes.spines.top": False,
             "axes.spines.right": False,
@@ -547,61 +551,98 @@ def plot_policy_bars(table, output_dir, metric, name, ylabel, budget=0.5):
     fig.tight_layout()
     save_figure(fig, output_dir, name)
 
-
 def plot_intro_teaser(auc_table, routes, output_dir):
     auc = auc_table[auc_table["language_code"] == "mean"].copy()
+
     selected_routes = routes[
         (routes["budget"] == 0.5)
         & (routes["policy"].isin(["confidence", "random"]))
     ]
+
     routing = selected_routes.pivot_table(
         index=["dataset", "family"],
         columns="policy",
         values="accuracy",
     ).reset_index()
-    routing["gain_pp"] = (routing["confidence"] - routing["random"]) * 100
+
+    routing["gain_pp"] = (
+        routing["confidence"] - routing["random"]
+    ) * 100
 
     x = np.arange(len(DATASETS))
-    offsets = {"qwen": -0.13, "gemma": 0.0, "llama": 0.13}
-    fig, axes = plt.subplots(2, 1, figsize=(3.35, 4.25), sharex=True)
+    offsets = {
+        "qwen": -0.13,
+        "gemma": 0.0,
+        "llama": 0.13,
+    }
+
+    fig, axes = plt.subplots(
+        1,
+        2,
+        figsize=(16, 6.5),
+        sharex=True,
+    )
 
     for family in FAMILIES:
-        family_auc = auc[auc["family"] == family].set_index("dataset")
-        family_gain = routing[routing["family"] == family].set_index("dataset")
+        family_auc = auc[
+            auc["family"] == family
+        ].set_index("dataset")
+
+        family_gain = routing[
+            routing["family"] == family
+        ].set_index("dataset")
+
         axes[0].scatter(
             x + offsets[family],
-            [family_auc.loc[d, "correction_detection_auc"] for d in DATASETS],
-            s=34,
+            [
+                family_auc.loc[
+                    dataset,
+                    "correction_detection_auc",
+                ]
+                for dataset in DATASETS
+            ],
+            s=130,
             color=FAMILY_COLORS[family],
             label=FAMILY_NAMES[family],
             zorder=3,
         )
+
         axes[1].scatter(
             x + offsets[family],
-            [family_gain.loc[d, "gain_pp"] for d in DATASETS],
-            s=34,
+            [
+                family_gain.loc[dataset, "gain_pp"]
+                for dataset in DATASETS
+            ],
+            s=130,
             color=FAMILY_COLORS[family],
             zorder=3,
         )
 
-    auc_mean = auc.groupby("dataset")["correction_detection_auc"].mean()
-    gain_mean = routing.groupby("dataset")["gain_pp"].mean()
+    auc_mean = auc.groupby(
+        "dataset"
+    )["correction_detection_auc"].mean()
+
+    gain_mean = routing.groupby(
+        "dataset"
+    )["gain_pp"].mean()
+
     axes[0].plot(
         x,
-        [auc_mean.loc[d] for d in DATASETS],
+        [auc_mean.loc[dataset] for dataset in DATASETS],
         marker="D",
-        markersize=5,
-        linewidth=1.2,
+        markersize=11,
+        linewidth=2.2,
         color="black",
         label="Mean",
         zorder=4,
     )
+
     axes[1].plot(
         x,
-        [gain_mean.loc[d] for d in DATASETS],
+        [gain_mean.loc[dataset] for dataset in DATASETS],
         marker="D",
-        markersize=5,
-        linewidth=1.2,
+        markersize=11,
+        linewidth=2.2,
         color="black",
         zorder=4,
     )
@@ -613,41 +654,98 @@ def plot_intro_teaser(auc_table, routes, output_dir):
             xytext=(0, 7),
             textcoords="offset points",
             ha="center",
-            fontsize=7,
+            fontsize=20,
         )
+
         axes[1].annotate(
             f"{gain_mean.loc[dataset]:+.1f}",
             (x[index], gain_mean.loc[dataset]),
             xytext=(0, 7),
             textcoords="offset points",
             ha="center",
-            fontsize=7,
+            fontsize=20,
         )
 
-    axes[0].axhline(0.5, linestyle="--", color="#666666", linewidth=1)
-    axes[1].axhline(0, linestyle="--", color="#666666", linewidth=1)
-    axes[0].set_ylabel("Correction-detection AUC")
-    axes[1].set_ylabel("Gain over random (points)\nat 50% escalation")
+    axes[0].axhline(
+        0.5,
+        linestyle="--",
+        color="#666666",
+        linewidth=1,
+    )
+
+    axes[1].axhline(
+        0,
+        linestyle="--",
+        color="#666666",
+        linewidth=1,
+    )
+
+    axes[0].set_ylabel(
+        "Correction-detection AUC",
+        fontsize=22,
+    )
+
+    axes[1].set_ylabel(
+        "Gain over random (points)\nat 50% escalation",
+        fontsize=22,
+    )
+
     axes[0].set_ylim(0.45, 0.84)
     axes[1].set_ylim(-2, 7)
-    axes[1].set_xticks(x, [DATASET_NAMES[d] for d in DATASETS], rotation=12)
+
+    dataset_labels = [
+        DATASET_NAMES[dataset]
+        for dataset in DATASETS
+    ]
+
+    for ax in axes:
+        ax.set_xticks(
+            x,
+            dataset_labels,
+            rotation=12,
+        )
+        ax.tick_params(
+            axis="both",
+            labelsize=20,
+        )
+        ax.grid(
+            axis="y",
+            alpha=0.2,
+        )
 
     for label, ax in zip(("(a)", "(b)"), axes):
-        ax.text(0.01, 0.96, label, transform=ax.transAxes, va="top", fontweight="bold")
-        ax.grid(axis="y", alpha=0.2)
+        ax.text(
+            0.01,
+            0.96,
+            label,
+            transform=ax.transAxes,
+            va="top",
+            fontweight="bold",
+            fontsize=20,
+        )
 
     handles, labels = axes[0].get_legend_handles_labels()
+
     fig.legend(
         handles,
         labels,
         loc="upper center",
-        ncol=2,
+        ncol=4,
         frameon=False,
-        bbox_to_anchor=(0.5, 1.01),
+        bbox_to_anchor=(0.5, 1.02),
+        fontsize=20,
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.89), h_pad=0.7)
-    save_figure(fig, output_dir, "00_introduction_teaser")
 
+    fig.tight_layout(
+        rect=(0, 0, 1, 0.84),
+        w_pad=2.5,
+    )
+
+    save_figure(
+        fig,
+        output_dir,
+        "00_introduction_teaser",
+    )
 
 def main():
     args = parse_arguments()

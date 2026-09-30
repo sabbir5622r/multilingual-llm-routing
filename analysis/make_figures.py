@@ -231,7 +231,7 @@ def plot_accuracy_escalation(table, output_dir):
     fig, axes = plt.subplots(
         3,
         3,
-        figsize=(13, 10),
+        figsize=(13, 8),
         sharex=True,
     )
 
@@ -265,8 +265,8 @@ def plot_accuracy_escalation(table, output_dir):
                     line["escalation_rate"],
                     line["accuracy"],
                     marker="o",
-                    markersize=3,
-                    linewidth=1.7,
+                    markersize=4,
+                    linewidth=2.5,
                     color=POLICY_COLORS[policy],
                     label=POLICY_NAMES[policy],
                 )
@@ -280,9 +280,9 @@ def plot_accuracy_escalation(table, output_dir):
 
             ax.set_xlim(-0.02, 1.02)
 
-            # Show all tick values with two decimal places
+            
             ax.xaxis.set_major_formatter(
-                FormatStrFormatter("%.2f")
+                FormatStrFormatter("%.1f")
             )
 
             ax.yaxis.set_major_formatter(
@@ -291,7 +291,7 @@ def plot_accuracy_escalation(table, output_dir):
 
             ax.tick_params(
                 axis="both",
-                labelsize=18,
+                labelsize=14,
                 pad=3,
             )
 
@@ -300,17 +300,17 @@ def plot_accuracy_escalation(table, output_dir):
                 color="#888888",
             )
 
-    # Shared axis titles positioned closer to the plots
+    
     fig.supxlabel(
         "Escalation rate",
-        fontsize=20,
+        fontsize=18,
         x=0.535,
         y=0.035,
     )
 
     fig.supylabel(
         "Accuracy",
-        fontsize=20,
+        fontsize=18,
         x=0.025,
         y=0.45,
     )
@@ -357,14 +357,14 @@ def plot_accuracy_escalation(table, output_dir):
         handletextpad=0.7,
     )
 
-    # Manual layout gives tighter and more predictable spacing
+   
     fig.subplots_adjust(
-        left=0.085,
+        left=0.083,
         right=0.985,
         bottom=0.11,
         top=0.80,
         wspace=0.10,
-        hspace=0.16,
+        hspace=0.15,
     )
 
     save_figure(
@@ -373,7 +373,7 @@ def plot_accuracy_escalation(table, output_dir):
         "04_accuracy_escalation_curves",
     )
 
-    
+
 def policy_difference(table, first, second, value="accuracy"):
     left = table[table["policy"] == first][
         ["dataset", "family", "budget", value]

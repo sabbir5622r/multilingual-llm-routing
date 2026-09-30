@@ -552,7 +552,9 @@ def plot_policy_bars(table, output_dir, metric, name, ylabel, budget=0.5):
     save_figure(fig, output_dir, name)
 
 def plot_intro_teaser(auc_table, routes, output_dir):
-    auc = auc_table[auc_table["language_code"] == "mean"].copy()
+    auc = auc_table[
+        auc_table["language_code"] == "mean"
+    ].copy()
 
     selected_routes = routes[
         (routes["budget"] == 0.5)
@@ -570,6 +572,7 @@ def plot_intro_teaser(auc_table, routes, output_dir):
     ) * 100
 
     x = np.arange(len(DATASETS))
+
     offsets = {
         "qwen": -0.13,
         "gemma": 0.0,
@@ -601,7 +604,7 @@ def plot_intro_teaser(auc_table, routes, output_dir):
                 ]
                 for dataset in DATASETS
             ],
-            s=130,
+            s=170,
             color=FAMILY_COLORS[family],
             label=FAMILY_NAMES[family],
             zorder=3,
@@ -613,7 +616,7 @@ def plot_intro_teaser(auc_table, routes, output_dir):
                 family_gain.loc[dataset, "gain_pp"]
                 for dataset in DATASETS
             ],
-            s=130,
+            s=170,
             color=FAMILY_COLORS[family],
             zorder=3,
         )
@@ -630,7 +633,7 @@ def plot_intro_teaser(auc_table, routes, output_dir):
         x,
         [auc_mean.loc[dataset] for dataset in DATASETS],
         marker="D",
-        markersize=11,
+        markersize=13,
         linewidth=2.2,
         color="black",
         label="Mean",
@@ -641,7 +644,7 @@ def plot_intro_teaser(auc_table, routes, output_dir):
         x,
         [gain_mean.loc[dataset] for dataset in DATASETS],
         marker="D",
-        markersize=11,
+        markersize=13,
         linewidth=2.2,
         color="black",
         zorder=4,
@@ -651,19 +654,19 @@ def plot_intro_teaser(auc_table, routes, output_dir):
         axes[0].annotate(
             f"{auc_mean.loc[dataset]:.2f}",
             (x[index], auc_mean.loc[dataset]),
-            xytext=(0, 7),
+            xytext=(0, 9),
             textcoords="offset points",
             ha="center",
-            fontsize=20,
+            fontsize=22,
         )
 
         axes[1].annotate(
             f"{gain_mean.loc[dataset]:+.1f}",
             (x[index], gain_mean.loc[dataset]),
-            xytext=(0, 7),
+            xytext=(0, 9),
             textcoords="offset points",
             ha="center",
-            fontsize=20,
+            fontsize=22,
         )
 
     axes[0].axhline(
@@ -682,12 +685,12 @@ def plot_intro_teaser(auc_table, routes, output_dir):
 
     axes[0].set_ylabel(
         "Correction-detection AUC",
-        fontsize=22,
+        fontsize=24,
     )
 
     axes[1].set_ylabel(
         "Gain over random (points)\nat 50% escalation",
-        fontsize=22,
+        fontsize=24,
     )
 
     axes[0].set_ylim(0.45, 0.84)
@@ -704,10 +707,12 @@ def plot_intro_teaser(auc_table, routes, output_dir):
             dataset_labels,
             rotation=12,
         )
+
         ax.tick_params(
             axis="both",
-            labelsize=20,
+            labelsize=22,
         )
+
         ax.grid(
             axis="y",
             alpha=0.2,
@@ -721,20 +726,29 @@ def plot_intro_teaser(auc_table, routes, output_dir):
             transform=ax.transAxes,
             va="top",
             fontweight="bold",
-            fontsize=20,
+            fontsize=22,
         )
 
     handles, labels = axes[0].get_legend_handles_labels()
 
-    fig.legend(
+    legend = fig.legend(
         handles,
         labels,
         loc="upper center",
         ncol=4,
         frameon=False,
         bbox_to_anchor=(0.5, 1.02),
-        fontsize=20,
+        fontsize=22,
+        markerscale=1.15,
     )
+
+    for text in legend.get_texts():
+        if text.get_text() in {
+            FAMILY_NAMES["qwen"],
+            FAMILY_NAMES["gemma"],
+            FAMILY_NAMES["llama"],
+        }:
+            text.set_fontweight("bold")
 
     fig.tight_layout(
         rect=(0, 0, 1, 0.84),
@@ -746,7 +760,7 @@ def plot_intro_teaser(auc_table, routes, output_dir):
         output_dir,
         "00_introduction_teaser",
     )
-
+    
 def main():
     args = parse_arguments()
     args.output.mkdir(parents=True, exist_ok=True)

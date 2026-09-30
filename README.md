@@ -17,6 +17,23 @@
 
 ---
 
+
+> ### 💡 TL;DR
+>
+> <p align="justify">This repository contains a reproducible framework for studying confidence based small to large language model routing across English, Bangla, Hindi, and Urdu. The experiments cover three model families and three multilingual tasks. The central result is that confidence routing is task dependent. It improves over random routing on multilingual reading comprehension and topic classification, but provides little advantage on multilingual reasoning because small models can remain highly confident while incorrect.</p>
+
+---
+
+## 📖 Overview
+
+This project studies whether small to large model routing can reduce the use of larger language models while preserving multilingual accuracy.
+
+<p align="justify">Each example is first evaluated by a small model. The routing policy then decides whether to retain the small model prediction or escalate the example to the corresponding large model. Confidence is measured using the margin between the two highest answer probabilities produced by the small model.</p>
+
+<p align="justify">The study compares routing behavior across model families, task types, and languages. It also examines whether confidence ranking distributes escalation resources evenly across languages and whether low confidence reliably identifies errors that the large model can correct.</p>
+
+---
+
 ## 📑 Table of Contents
 
 1. [Overview](#-overview)
@@ -32,22 +49,6 @@
 11. [Usage](#-usage)
 12. [Status](#-status)
 13. [Author](#-author)
-
----
-
-> ### 💡 TL;DR
->
-> <p align="justify">This repository contains a reproducible framework for studying confidence based small to large language model routing across English, Bangla, Hindi, and Urdu. The experiments cover three model families and three multilingual tasks. The central result is that confidence routing is task dependent. It improves over random routing on multilingual reading comprehension and topic classification, but provides little advantage on multilingual reasoning because small models can remain highly confident while incorrect.</p>
-
----
-
-## 📖 Overview
-
-This project studies whether small to large model routing can reduce the use of larger language models while preserving multilingual accuracy.
-
-<p align="justify">Each example is first evaluated by a small model. The routing policy then decides whether to retain the small model prediction or escalate the example to the corresponding large model. Confidence is measured using the margin between the two highest answer probabilities produced by the small model.</p>
-
-<p align="justify">The study compares routing behavior across model families, task types, and languages. It also examines whether confidence ranking distributes escalation resources evenly across languages and whether low confidence reliably identifies errors that the large model can correct.</p>
 
 ---
 
@@ -314,3 +315,5 @@ Student | Research Assistant
 GitHub: [sabbir5622r](https://github.com/sabbir5622r)
 
 Personal Website: [sabbir-hossen.com](https://sabbir-hossen.com/)
+
+

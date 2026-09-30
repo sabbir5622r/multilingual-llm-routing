@@ -4,7 +4,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
+from matplotlib.colors import to_rgba
+from matplotlib.patches import Patch
+from matplotlib.ticker import FormatStrFormatter
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TABLES = ROOT / "results" / "paper_analysis" / "tables"
@@ -220,18 +222,34 @@ def plot_small_large_scatter(table, output_dir):
 
 
 def plot_accuracy_escalation(table, output_dir):
+    dataset_colors = {
+        "belebele": "#4C78A8",
+        "mmlu_prox_lite": "#F58518",
+        "sib200": "#54A24B",
+    }
+
     fig, axes = plt.subplots(
         3,
         3,
-        figsize=(13, 7),
+        figsize=(13, 10),
         sharex=True,
     )
 
     for row, dataset in enumerate(DATASETS):
+        dataset_color = dataset_colors[dataset]
+
         for column, family in enumerate(FAMILIES):
             ax = axes[row, column]
 
             ax.set_box_aspect(6 / 10)
+
+            ax.set_facecolor(
+                to_rgba(dataset_color, alpha=0.07)
+            )
+
+            for spine in ax.spines.values():
+                spine.set_color(dataset_color)
+                spine.set_linewidth(1.2)
 
             selected = table[
                 (table["dataset"] == dataset)
@@ -257,44 +275,96 @@ def plot_accuracy_escalation(table, output_dir):
                 ax.set_title(
                     FAMILY_NAMES[family],
                     fontsize=18,
-                )
-
-            if column == 0:
-                ax.set_ylabel(
-                    f"{DATASET_NAMES[dataset]}\nAccuracy",
-                    fontsize=20,
-                )
-
-            if row == 2:
-                ax.set_xlabel(
-                    "Escalation rate",
-                    fontsize=20,
+                    pad=6,
                 )
 
             ax.set_xlim(-0.02, 1.02)
 
+            # Show all tick values with two decimal places
+            ax.xaxis.set_major_formatter(
+                FormatStrFormatter("%.2f")
+            )
+
+            ax.yaxis.set_major_formatter(
+                FormatStrFormatter("%.2f")
+            )
+
             ax.tick_params(
                 axis="both",
                 labelsize=18,
+                pad=3,
             )
 
-            ax.grid(alpha=0.25)
+            ax.grid(
+                alpha=0.25,
+                color="#888888",
+            )
 
-    handles, labels = axes[0, 0].get_legend_handles_labels()
+    # Shared axis titles positioned closer to the plots
+    fig.supxlabel(
+        "Escalation rate",
+        fontsize=20,
+        x=0.535,
+        y=0.035,
+    )
 
-    fig.legend(
-        handles,
-        labels,
+    fig.supylabel(
+        "Accuracy",
+        fontsize=20,
+        x=0.025,
+        y=0.45,
+    )
+
+    policy_handles, policy_labels = (
+        axes[0, 0].get_legend_handles_labels()
+    )
+
+    policy_legend = fig.legend(
+        policy_handles,
+        policy_labels,
         loc="upper center",
+        bbox_to_anchor=(0.5, 0.99),
         ncol=4,
         frameon=False,
         fontsize=18,
+        columnspacing=1.8,
+        handletextpad=0.7,
     )
 
-    fig.tight_layout(
-        rect=(0, 0, 1, 0.94),
-        w_pad=0.8,
-        h_pad=0.7,
+    fig.add_artist(policy_legend)
+
+    dataset_handles = [
+        Patch(
+            facecolor=to_rgba(
+                dataset_colors[dataset],
+                alpha=0.15,
+            ),
+            edgecolor=dataset_colors[dataset],
+            linewidth=1.5,
+            label=DATASET_NAMES[dataset],
+        )
+        for dataset in DATASETS
+    ]
+
+    fig.legend(
+        handles=dataset_handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.91),
+        ncol=3,
+        frameon=False,
+        fontsize=18,
+        columnspacing=2.2,
+        handletextpad=0.7,
+    )
+
+    # Manual layout gives tighter and more predictable spacing
+    fig.subplots_adjust(
+        left=0.085,
+        right=0.985,
+        bottom=0.11,
+        top=0.80,
+        wspace=0.10,
+        hspace=0.16,
     )
 
     save_figure(
@@ -303,6 +373,7 @@ def plot_accuracy_escalation(table, output_dir):
         "04_accuracy_escalation_curves",
     )
 
+    
 def policy_difference(table, first, second, value="accuracy"):
     left = table[table["policy"] == first][
         ["dataset", "family", "budget", value]

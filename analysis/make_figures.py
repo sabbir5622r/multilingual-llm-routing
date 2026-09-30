@@ -220,15 +220,30 @@ def plot_small_large_scatter(table, output_dir):
 
 
 def plot_accuracy_escalation(table, output_dir):
-    fig, axes = plt.subplots(3, 3, figsize=(13, 10), sharex=True)
+    fig, axes = plt.subplots(
+        3,
+        3,
+        figsize=(13, 7),
+        sharex=True,
+    )
+
     for row, dataset in enumerate(DATASETS):
         for column, family in enumerate(FAMILIES):
             ax = axes[row, column]
+
+            # Height-to-width ratio = 6:10
+            ax.set_box_aspect(6 / 10)
+
             selected = table[
-                (table["dataset"] == dataset) & (table["family"] == family)
+                (table["dataset"] == dataset)
+                & (table["family"] == family)
             ]
+
             for policy in POLICIES:
-                line = selected[selected["policy"] == policy].sort_values("budget")
+                line = selected[
+                    selected["policy"] == policy
+                ].sort_values("budget")
+
                 ax.plot(
                     line["escalation_rate"],
                     line["accuracy"],
@@ -238,19 +253,42 @@ def plot_accuracy_escalation(table, output_dir):
                     color=POLICY_COLORS[policy],
                     label=POLICY_NAMES[policy],
                 )
+
             if row == 0:
                 ax.set_title(FAMILY_NAMES[family])
+
             if column == 0:
-                ax.set_ylabel(f"{DATASET_NAMES[dataset]}\nAccuracy")
+                ax.set_ylabel(
+                    f"{DATASET_NAMES[dataset]}\nAccuracy"
+                )
+
             if row == 2:
                 ax.set_xlabel("Escalation rate")
+
             ax.set_xlim(-0.02, 1.02)
             ax.grid(alpha=0.25)
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=4, frameon=False)
-    fig.tight_layout(rect=(0, 0, 1, 0.955))
-    save_figure(fig, output_dir, "04_accuracy_escalation_curves")
 
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        ncol=4,
+        frameon=False,
+    )
+
+    fig.tight_layout(
+        rect=(0, 0, 1, 0.94),
+        w_pad=0.8,
+        h_pad=0.7,
+    )
+
+    save_figure(
+        fig,
+        output_dir,
+        "04_accuracy_escalation_curves",
+    )
 
 def policy_difference(table, first, second, value="accuracy"):
     left = table[table["policy"] == first][

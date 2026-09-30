@@ -231,7 +231,6 @@ def plot_accuracy_escalation(table, output_dir):
         for column, family in enumerate(FAMILIES):
             ax = axes[row, column]
 
-            # Height-to-width ratio = 6:10
             ax.set_box_aspect(6 / 10)
 
             selected = table[
@@ -255,17 +254,30 @@ def plot_accuracy_escalation(table, output_dir):
                 )
 
             if row == 0:
-                ax.set_title(FAMILY_NAMES[family])
+                ax.set_title(
+                    FAMILY_NAMES[family],
+                    fontsize=18,
+                )
 
             if column == 0:
                 ax.set_ylabel(
-                    f"{DATASET_NAMES[dataset]}\nAccuracy"
+                    f"{DATASET_NAMES[dataset]}\nAccuracy",
+                    fontsize=20,
                 )
 
             if row == 2:
-                ax.set_xlabel("Escalation rate")
+                ax.set_xlabel(
+                    "Escalation rate",
+                    fontsize=20,
+                )
 
             ax.set_xlim(-0.02, 1.02)
+
+            ax.tick_params(
+                axis="both",
+                labelsize=18,
+            )
+
             ax.grid(alpha=0.25)
 
     handles, labels = axes[0, 0].get_legend_handles_labels()
@@ -276,6 +288,7 @@ def plot_accuracy_escalation(table, output_dir):
         loc="upper center",
         ncol=4,
         frameon=False,
+        fontsize=18,
     )
 
     fig.tight_layout(

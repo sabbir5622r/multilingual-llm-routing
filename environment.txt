@@ -1,0 +1,11 @@
+Experimental environment used for the reported results
+
+Python: 3.12.13
+PyTorch: 2.10.0+cu128
+Transformers: 4.57.6
+Accelerate: 1.13.0
+Datasets: 4.8.5
+Hugging Face Hub: 0.36.2
+CUDA runtime: 12.8
+Environment: Kaggle
+Hardware: 2 × NVIDIA Tesla T4

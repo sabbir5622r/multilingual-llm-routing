@@ -6,3 +6,26 @@ data/processed/
 results/
 *.ipynb_checkpoints/
 
+
+__pycache__/
+*.py[cod]
+.venv/
+
+.env
+.env.*
+.vscode/
+.idea/
+
+
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
+
+
+data/processed/
+data/processed_phase2/
+results/
+
+
+checkpoints/
+logs/

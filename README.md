@@ -177,8 +177,10 @@ If you use this repository or its experimental framework, please consider citing
 
 <div align="center">
 
-**Built with love for reproducible research on efficient LLMs and low-resource language understanding.**  
+**Built with love ❤️ for reproducible research on efficient and multilingual LLMs.**
+
 *If this repository supports your research, consider giving it a ⭐ and citing the paper.*
-**Multilingual LLM Routing Team**
+
+**❤️ Multilingual LLM Routing Team ❤️**
 
 </div>

@@ -155,10 +155,30 @@ multilingual-llm-routing/
 
 Datasets, model weights, raw predictions, and generated outputs are excluded from Git. The repository preserves the complete code path from public datasets to paper tables and figures.
 
-## Citation
 
-If you use this repository, please cite the associated paper. The final BibTeX entry will be added after publication.
 
-## License
+## 📚 Citation
 
-Code is released under the [MIT License](LICENSE). Datasets and model weights remain subject to their original licenses and access conditions.
+If you use this repository or its experimental framework, please consider citing the associated paper:
+
+```bibtex
+@misc{hossen2026quantization,
+      title={How Much Can We Compress Small LLMs? Quantization Trade-offs for Low-Resource Bangla Language Understanding}, 
+      author={Md Sabbir Hossen and Anichur Rahman and Pabon Shaha and Andrew H. Sung and Md Shohel Rana},
+      year={2026},
+      eprint={2610.8184772},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2608.24615}, 
+}
+```
+
+---
+
+<div align="center">
+
+**Built with love for reproducible research on efficient LLMs and low-resource language understanding.**  
+*If this repository supports your research, consider giving it a ⭐ and citing the paper.*
+*LLM Routing Team*
+
+</div>

@@ -179,6 +179,6 @@ If you use this repository or its experimental framework, please consider citing
 
 **Built with love for reproducible research on efficient LLMs and low-resource language understanding.**  
 *If this repository supports your research, consider giving it a ⭐ and citing the paper.*
-*LLM Routing Team*
+**Multilingual LLM Routing Team**
 
 </div>
